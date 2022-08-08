@@ -8,6 +8,7 @@ import (
 
 	"encoding/json"
 
+	"github.com/99designs/keyring"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 )
@@ -41,25 +42,39 @@ type Config struct {
 }
 
 func (config Config) Replace(unmarshaler cache.Unmarshaler, key string) {
-	bytes, err := os.ReadFile(MsalCache + config.tenant + config.client)
+	ring, err := keyring.Open(keyring.Config{ServiceName: "msaler"})
 	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			fmt.Fprintf(os.Stderr, "Failed to read cache: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to open keyring: %v\n", err)
+	}
+
+	value, err := ring.Get(config.tenant + config.client)
+	if err != nil {
+		if !errors.Is(err, keyring.ErrKeyNotFound) {
+			fmt.Fprintf(os.Stderr, "Failed to read keyring: %v\n", err)
 		}
 	} else {
-		if err = unmarshaler.Unmarshal(bytes); err != nil {
+		if err = unmarshaler.Unmarshal(value.Data); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to unmarshal cache: %v\n", err)
 		}
 	}
 }
 
 func (config Config) Export(marshaler cache.Marshaler, key string) {
+
 	bytes, err := marshaler.Marshal()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to marshal cache: %v\n", err)
 	} else {
-		if err = os.WriteFile(MsalCache+config.tenant+config.client, bytes, 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to write cache: %v\n", err)
+		ring, err := keyring.Open(keyring.Config{ServiceName: "msaler"})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to open keyring: %v\n", err)
+		}
+
+		if err := ring.Set(keyring.Item{
+			Key:  config.tenant + config.client,
+			Data: bytes,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to write keyring: %v\n", err)
 		}
 	}
 }
