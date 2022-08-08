@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
 	"encoding/json"
 
-	"github.com/99designs/keyring"
-	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
+	"github.com/manifoldco/promptui"
 )
 
 const MsalCache = "/tmp/msal_cache"
@@ -35,50 +36,6 @@ var (
 	}
 )
 
-type Config struct {
-	client  string
-	tenant  string
-	baseUrl string
-}
-
-func (config Config) Replace(unmarshaler cache.Unmarshaler, key string) {
-	ring, err := keyring.Open(keyring.Config{ServiceName: "msaler"})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to open keyring: %v\n", err)
-	}
-
-	value, err := ring.Get(config.tenant + config.client)
-	if err != nil {
-		if !errors.Is(err, keyring.ErrKeyNotFound) {
-			fmt.Fprintf(os.Stderr, "Failed to read keyring: %v\n", err)
-		}
-	} else {
-		if err = unmarshaler.Unmarshal(value.Data); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to unmarshal cache: %v\n", err)
-		}
-	}
-}
-
-func (config Config) Export(marshaler cache.Marshaler, key string) {
-
-	bytes, err := marshaler.Marshal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to marshal cache: %v\n", err)
-	} else {
-		ring, err := keyring.Open(keyring.Config{ServiceName: "msaler"})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to open keyring: %v\n", err)
-		}
-
-		if err := ring.Set(keyring.Item{
-			Key:  config.tenant + config.client,
-			Data: bytes,
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to write keyring: %v\n", err)
-		}
-	}
-}
-
 func getToken(config Config) (public.AuthResult, error) {
 	client, err := public.New(config.client, public.WithAuthority("https://login.microsoftonline.com/"+config.tenant), public.WithCache(config))
 	if err != nil {
@@ -95,13 +52,98 @@ func getToken(config Config) (public.AuthResult, error) {
 	}
 }
 
-func getConfig(args []string) (Config, error) {
-	if len(args) == 1 {
-		config, ok := KnownConfigs[args[0]]
-		if !ok {
-			return Config{}, errors.New("Configuration not known")
+func loadKnownConfig(name string) (Config, error) {
+	config, ok := KnownConfigs[name]
+	if !ok {
+		return Config{}, fmt.Errorf("Configuration `%s` not found", name)
+	}
+	return config, nil
+}
+
+func promptCustom() (Config, error) {
+	uuidMatcher, _ := regexp.Compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+	urlMatcher, _ := regexp.Compile("^http[s]?://.+/$")
+
+	uuidValidator := func(input string) error {
+		if uuidMatcher.MatchString(input) {
+			return nil
+		} else {
+			return errors.New("Invalid UUID")
 		}
-		return config, nil
+	}
+
+	urlValidator := func(input string) error {
+		if urlMatcher.MatchString(input) {
+			return nil
+		} else {
+			return errors.New("Invalid URL")
+		}
+	}
+
+	prompt := promptui.Prompt{
+		Label:    "Name",
+		Validate: nil,
+	}
+
+	prompt = promptui.Prompt{
+		Label:    "Client ID",
+		Validate: uuidValidator,
+	}
+
+	client, err := prompt.Run()
+	if err != nil {
+		return Config{}, err
+	}
+
+	prompt = promptui.Prompt{
+		Label:    "Tenant ID",
+		Validate: uuidValidator,
+	}
+
+	tenant, err := prompt.Run()
+	if err != nil {
+		return Config{}, err
+	}
+
+	prompt = promptui.Prompt{
+		Label:    "Base URL",
+		Validate: urlValidator,
+	}
+
+	baseUrl, err := prompt.Run()
+	if err != nil {
+		return Config{}, err
+	}
+
+	return Config{
+		client:  strings.ToLower(client),
+		tenant:  strings.ToLower(tenant),
+		baseUrl: baseUrl,
+	}, nil
+}
+
+func getConfig(args []string) (Config, error) {
+	if len(args) == 0 {
+		items := []string{"celo", "demo", "jupyter", "custom"}
+		prompt := promptui.Select{
+			Label:     "Config",
+			Items:     items,
+			IsVimMode: true,
+			HideHelp:  true,
+		}
+
+		i, config, err := prompt.Run()
+		if err != nil {
+			return Config{}, err
+		}
+
+		if i == len(items)-1 {
+			return promptCustom()
+		} else {
+			return loadKnownConfig(config)
+		}
+	} else if len(args) == 1 {
+		return loadKnownConfig(args[0])
 	} else if len(args) == 3 {
 		return Config{
 			client:  args[0],
