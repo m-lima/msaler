@@ -6,6 +6,7 @@ require (
 	github.com/99designs/keyring v1.2.1
 	github.com/AzureAD/microsoft-authentication-library-for-go v0.5.3
 	github.com/manifoldco/promptui v0.9.0
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
 require (

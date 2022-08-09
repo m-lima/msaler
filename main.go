@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"encoding/json"
@@ -14,151 +13,74 @@ import (
 	"github.com/manifoldco/promptui"
 )
 
-const MsalCache = "/tmp/msal_cache"
-
-var (
-	KnownConfigs = map[string]Config{
-		"jupyter": {
-			client:  "a5f77a6e-73a5-4fed-8fc3-818e4d929020",
-			tenant:  "65db1639-116f-48c3-9a8b-59f0c228f263",
-			baseUrl: "https://greenfield.cognitedata.com/",
-		},
-		"celo": {
-			client:  "1c65d0ae-06a1-4a2e-9dce-81a5362e6972",
-			tenant:  "65db1639-116f-48c3-9a8b-59f0c228f263",
-			baseUrl: "https://greenfield.cognitedata.com/",
-		},
-		"demo": {
-			client:  "62d51730-37d6-430c-b3c5-d2bcaaf4bdb1",
-			tenant:  "d144e8ad-92a5-49c7-9e33-02e965f9679e",
-			baseUrl: "https://greenfield.cognitedata.com/",
-		},
-	}
-)
-
-func getToken(config Config) (public.AuthResult, error) {
-	client, err := public.New(config.client, public.WithAuthority("https://login.microsoftonline.com/"+config.tenant), public.WithCache(config))
+func getToken(client Client) (public.AuthResult, error) {
+	msalClient, err := public.New(client.Id, public.WithAuthority("https://login.microsoftonline.com/"+client.Tenant.Id), public.WithCache(client))
 	if err != nil {
 		return public.AuthResult{}, err
 	}
 
-	scopes := []string{config.baseUrl + ".default"}
+	scopes := []string{client.BaseUrl + ".default"}
 
-	accounts := client.Accounts()
+	accounts := msalClient.Accounts()
 	if len(accounts) > 0 {
-		return client.AcquireTokenSilent(context.Background(), scopes, public.WithSilentAccount(accounts[0]))
+		return msalClient.AcquireTokenSilent(context.Background(), scopes, public.WithSilentAccount(accounts[0]))
 	} else {
-		return client.AcquireTokenInteractive(context.Background(), scopes)
+		return msalClient.AcquireTokenInteractive(context.Background(), scopes)
 	}
 }
 
-func loadKnownConfig(name string) (Config, error) {
-	config, ok := KnownConfigs[name]
-	if !ok {
-		return Config{}, fmt.Errorf("Configuration `%s` not found", name)
+func promptSelectClient(clients map[string]Client) (string, error) {
+	type Item struct {
+		Name    string
+		Project string
+		BaseUrl string
+		Tenant  string
 	}
-	return config, nil
+
+	if len(clients) == 0 {
+		return "", errors.New("No configured clients")
+	}
+
+	i := 0
+	list := make([]Item, len(clients))
+	for name, client := range clients {
+		project := client.Project
+		if len(project) > 0 {
+			project = project + " "
+		}
+		tenant := client.Tenant.Name
+		if len(tenant) > 0 {
+			tenant = " " + tenant
+		}
+		list[i] = Item{
+			Name:    name,
+			Project: project,
+			BaseUrl: client.BaseUrl,
+			Tenant:  tenant,
+		}
+		i++
+	}
+
+	templates := &promptui.SelectTemplates{
+		Label:    `{{ "Client:" | blue }}`,
+		Active:   "▸ {{ .Name | bold }}",
+		Inactive: "  {{ .Name }}",
+		Selected: "Client: {{ .Name | green }}",
+		Details:  "{{ .Name | white }} {{ .Project | cyan }}{{ .BaseUrl }}{{ .Tenant | faint }}",
+	}
+
+	prompt := promptui.Select{
+		Items:     list,
+		IsVimMode: true,
+		HideHelp:  true,
+		Templates: templates,
+	}
+
+	i, _, err := prompt.Run()
+	return list[i].Name, err
 }
 
-func promptCustom() (Config, error) {
-	uuidMatcher, _ := regexp.Compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
-	urlMatcher, _ := regexp.Compile("^http[s]?://.+/$")
-
-	uuidValidator := func(input string) error {
-		if uuidMatcher.MatchString(input) {
-			return nil
-		} else {
-			return errors.New("Invalid UUID")
-		}
-	}
-
-	urlValidator := func(input string) error {
-		if urlMatcher.MatchString(input) {
-			return nil
-		} else {
-			return errors.New("Invalid URL")
-		}
-	}
-
-	prompt := promptui.Prompt{
-		Label:    "Name",
-		Validate: nil,
-	}
-
-	prompt = promptui.Prompt{
-		Label:    "Client ID",
-		Validate: uuidValidator,
-	}
-
-	client, err := prompt.Run()
-	if err != nil {
-		return Config{}, err
-	}
-
-	prompt = promptui.Prompt{
-		Label:    "Tenant ID",
-		Validate: uuidValidator,
-	}
-
-	tenant, err := prompt.Run()
-	if err != nil {
-		return Config{}, err
-	}
-
-	prompt = promptui.Prompt{
-		Label:    "Base URL",
-		Validate: urlValidator,
-	}
-
-	baseUrl, err := prompt.Run()
-	if err != nil {
-		return Config{}, err
-	}
-
-	return Config{
-		client:  strings.ToLower(client),
-		tenant:  strings.ToLower(tenant),
-		baseUrl: baseUrl,
-	}, nil
-}
-
-func getConfig(args []string) (Config, error) {
-	if len(args) == 0 {
-		items := []string{"celo", "demo", "jupyter", "custom"}
-		prompt := promptui.Select{
-			Label:     "Config",
-			Items:     items,
-			IsVimMode: true,
-			HideHelp:  true,
-		}
-
-		i, config, err := prompt.Run()
-		if err != nil {
-			return Config{}, err
-		}
-
-		if i == len(items)-1 {
-			return promptCustom()
-		} else {
-			return loadKnownConfig(config)
-		}
-	} else if len(args) == 1 {
-		return loadKnownConfig(args[0])
-	} else if len(args) == 3 {
-		return Config{
-			client:  args[0],
-			tenant:  args[1],
-			baseUrl: args[2],
-		}, nil
-	} else {
-		return Config{}, errors.New("Wrong number of arguments\nExpected: (well-known | (clientId tenantId baseUrl))")
-	}
-}
-
-func main() {
-
-	args := os.Args[1:]
-
+func connectClient(args []string) error {
 	verbose := false
 	for i, arg := range args {
 		if arg == "-v" {
@@ -168,16 +90,36 @@ func main() {
 		}
 	}
 
-	config, err := getConfig(args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(-1)
+	if len(args) > 1 {
+		return errors.New("Too many arguments")
 	}
 
-	auth, err := getToken(config)
+	clients, err := LoadClients()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to get token: %v\n", err)
-		os.Exit(-1)
+		return err
+	}
+
+	var clientName string
+	if len(args) == 0 {
+		if clientName, err = promptSelectClient(clients); err != nil {
+			return err
+		}
+	} else {
+		clientName = args[1]
+	}
+
+	client, ok := clients[clientName]
+	if !ok {
+		clientNames := ""
+		for name := range clients {
+			clientNames += "\n" + name
+		}
+		return fmt.Errorf("Client name `%s` was not found\nPossible values:\n%s", clientName, clientNames)
+	}
+
+	auth, err := getToken(client)
+	if err != nil {
+		return err
 	}
 
 	if verbose {
@@ -190,4 +132,158 @@ func main() {
 	}
 
 	fmt.Println(auth.AccessToken)
+
+	return nil
+}
+
+func newClient(args []string) error {
+	if len(args) != 0 {
+		return errors.New("Too many arguments")
+	}
+
+	clients, _ := LoadClients()
+
+	uuidValidator := func(input string) error {
+		if getUuidMatcher().MatchString(input) {
+			return nil
+		}
+		return errors.New("Invalid UUID")
+	}
+
+	urlValidator := func(input string) error {
+		if getUrlMatcher().MatchString(input) {
+			return nil
+		}
+		return errors.New("Invalid URL")
+	}
+
+	nameValidator := func(input string) error {
+		if _, ok := clients[input]; ok {
+			return errors.New("Name already exists")
+		}
+		return nil
+	}
+
+	prompt := promptui.Prompt{
+		Label:    "Name",
+		Validate: nameValidator,
+	}
+	name, err := prompt.Run()
+	if err != nil {
+		return err
+	}
+
+	prompt = promptui.Prompt{
+		Label:    "Client ID",
+		Validate: uuidValidator,
+	}
+	client, err := prompt.Run()
+	if err != nil {
+		return err
+	}
+
+	prompt = promptui.Prompt{
+		Label: "Project",
+	}
+	project, err := prompt.Run()
+	if err != nil {
+		return err
+	}
+
+	prompt = promptui.Prompt{
+		Label:    "Tenant ID",
+		Validate: uuidValidator,
+	}
+	tenantId, err := prompt.Run()
+	if err != nil {
+		return err
+	}
+
+	prompt = promptui.Prompt{
+		Label: "Tenant Name",
+	}
+	tenantName, err := prompt.Run()
+	if err != nil {
+		return err
+	}
+
+	prompt = promptui.Prompt{
+		Label:    "Base URL",
+		Validate: urlValidator,
+	}
+	baseUrl, err := prompt.Run()
+	if err != nil {
+		return err
+	}
+
+	clients[name] =
+		Client{
+			Id:      strings.ToLower(client),
+			Project: project,
+			Tenant: Tenant{
+				Id:   strings.ToLower(tenantId),
+				Name: tenantName,
+			},
+			BaseUrl: baseUrl,
+		}
+
+	return SaveClients(clients)
+}
+
+func deleteClient(args []string) error {
+	if len(args) > 1 {
+		return errors.New("Too many arguments")
+	}
+
+	clients, err := LoadClients()
+	if err != nil {
+		return err
+	}
+
+	var clientName string
+	if len(args) == 0 {
+		if clientName, err = promptSelectClient(clients); err != nil {
+			return err
+		}
+	} else {
+		clientName = args[1]
+	}
+
+	if _, ok := clients[clientName]; ok {
+		delete(clients, clientName)
+		SaveClients(clients)
+	} else {
+		clientNames := ""
+		for name := range clients {
+			clientNames += "\n" + name
+		}
+		return fmt.Errorf("Client name `%s` was not found\nPossible values:\n%s", clientName, clientNames)
+	}
+
+	return nil
+}
+
+func main() {
+	var err error
+	if len(os.Args) == 1 {
+		err = connectClient(os.Args[1:])
+	} else {
+		modeParam := os.Args[1]
+		args := os.Args[2:]
+
+		if strings.HasPrefix("connect", modeParam) {
+			err = connectClient(args)
+		} else if strings.HasPrefix("new", modeParam) {
+			newClient(args)
+		} else if strings.HasPrefix("delete", modeParam) {
+			deleteClient(args)
+		} else {
+			err = fmt.Errorf("Unrecognized parameters `%s`", strings.Join(os.Args[1:], " "))
+		}
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(-1)
+	}
 }
