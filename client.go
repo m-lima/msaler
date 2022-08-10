@@ -7,8 +7,6 @@ import (
 	"regexp"
 	"strings"
 
-	"encoding/json"
-
 	"gopkg.in/yaml.v3"
 
 	"github.com/99designs/keyring"
@@ -150,31 +148,4 @@ func SaveClients(clients map[string]Client) error {
 	}
 
 	return os.WriteFile(configPath+"/msaler.yaml", bytes, 0644)
-}
-
-func Names(clients map[string]Client) []string {
-	clientNames := make([]string, len(clients))
-	i := 0
-	for k := range clients {
-		clientNames[i] = k
-	}
-	return clientNames
-}
-
-func (client *Client) Json() {
-	p, err := json.MarshalIndent(client, "", "  ")
-	if err != nil {
-		fmt.Printf("%v\n", err)
-	} else {
-		fmt.Printf("%s\n", p)
-	}
-}
-
-func (client *Client) Yaml() {
-	p, err := yaml.Marshal(client)
-	if err != nil {
-		fmt.Printf("%v\n", err)
-	} else {
-		fmt.Printf("%s\n", p)
-	}
 }

@@ -74,6 +74,7 @@ func promptSelectClient(clients map[string]Client) (string, error) {
 		IsVimMode: true,
 		HideHelp:  true,
 		Templates: templates,
+		Stdout:    os.Stderr,
 	}
 
 	i, _, err := prompt.Run()
@@ -167,6 +168,7 @@ func newClient(args []string) error {
 	prompt := promptui.Prompt{
 		Label:    "Name",
 		Validate: nameValidator,
+		Stdout:   os.Stderr,
 	}
 	name, err := prompt.Run()
 	if err != nil {
@@ -176,6 +178,7 @@ func newClient(args []string) error {
 	prompt = promptui.Prompt{
 		Label:    "Client ID",
 		Validate: uuidValidator,
+		Stdout:   os.Stderr,
 	}
 	client, err := prompt.Run()
 	if err != nil {
@@ -183,7 +186,8 @@ func newClient(args []string) error {
 	}
 
 	prompt = promptui.Prompt{
-		Label: "Project",
+		Label:  "Project",
+		Stdout: os.Stderr,
 	}
 	project, err := prompt.Run()
 	if err != nil {
@@ -193,6 +197,7 @@ func newClient(args []string) error {
 	prompt = promptui.Prompt{
 		Label:    "Tenant ID",
 		Validate: uuidValidator,
+		Stdout:   os.Stderr,
 	}
 	tenantId, err := prompt.Run()
 	if err != nil {
@@ -200,7 +205,8 @@ func newClient(args []string) error {
 	}
 
 	prompt = promptui.Prompt{
-		Label: "Tenant Name",
+		Label:  "Tenant Name",
+		Stdout: os.Stderr,
 	}
 	tenantName, err := prompt.Run()
 	if err != nil {
@@ -210,6 +216,7 @@ func newClient(args []string) error {
 	prompt = promptui.Prompt{
 		Label:    "Base URL",
 		Validate: urlValidator,
+		Stdout:   os.Stderr,
 	}
 	baseUrl, err := prompt.Run()
 	if err != nil {
