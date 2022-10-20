@@ -106,7 +106,7 @@ func connectClient(args []string) error {
 			return err
 		}
 	} else {
-		clientName = args[1]
+		clientName = args[0]
 	}
 
 	client, ok := clients[clientName]
@@ -273,19 +273,18 @@ func deleteClient(args []string) error {
 func main() {
 	var err error
 	if len(os.Args) == 1 {
-		err = connectClient(os.Args[1:])
+		err = fmt.Errorf("Missing command.\nAvailable commands: [token, new, delete]")
 	} else {
 		modeParam := os.Args[1]
-		args := os.Args[2:]
 
-		if strings.HasPrefix("connect", modeParam) {
-			err = connectClient(args)
-		} else if strings.HasPrefix("new", modeParam) {
-			newClient(args)
-		} else if strings.HasPrefix("delete", modeParam) {
-			deleteClient(args)
+		if "token" == modeParam {
+			err = connectClient(os.Args[2:])
+		} else if "new" == modeParam {
+			newClient(os.Args[2:])
+		} else if "delete" == modeParam {
+			deleteClient(os.Args[2:])
 		} else {
-			err = fmt.Errorf("Unrecognized parameters `%s`", strings.Join(os.Args[1:], " "))
+			err = fmt.Errorf("Unrecognized parameters `%s`.\nAvailable commands: [token, new, delete]", strings.Join(os.Args[1:], " "))
 		}
 	}
 
