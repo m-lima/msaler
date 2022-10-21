@@ -273,7 +273,7 @@ func deleteClient(args []string) error {
 func main() {
 	var err error
 	if len(os.Args) == 1 {
-		err = fmt.Errorf("Missing command.\nAvailable commands: [token, new, delete]")
+		err = connectClient(os.Args[1:])
 	} else {
 		modeParam := os.Args[1]
 
@@ -284,7 +284,10 @@ func main() {
 		} else if "delete" == modeParam {
 			deleteClient(os.Args[2:])
 		} else {
-			err = fmt.Errorf("Unrecognized parameters `%s`.\nAvailable commands: [token, new, delete]", strings.Join(os.Args[1:], " "))
+			err = connectClient(os.Args[1:])
+			if err != nil {
+				err = fmt.Errorf("Error while trying to interpret command as user: %v", err)
+			}
 		}
 	}
 
