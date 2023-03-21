@@ -132,7 +132,7 @@ func connectClient(args []string) error {
 		}
 	}
 
-	fmt.Println(auth.AccessToken)
+	fmt.Print(auth.AccessToken)
 
 	return nil
 }
@@ -253,7 +253,7 @@ func deleteClient(args []string) error {
 			return err
 		}
 	} else {
-		clientName = args[1]
+		clientName = args[0]
 	}
 
 	if _, ok := clients[clientName]; ok {
@@ -270,6 +270,39 @@ func deleteClient(args []string) error {
 	return nil
 }
 
+func printClient(args []string) error {
+	if len(args) > 1 {
+		return errors.New("Too many arguments")
+	}
+
+	clients, err := LoadClients()
+	if err != nil {
+		return err
+	}
+
+	var clientName string
+	if len(args) == 0 {
+		if clientName, err = promptSelectClient(clients); err != nil {
+			return err
+		}
+	} else {
+		clientName = args[0]
+	}
+
+	client, ok := clients[clientName]
+	if !ok {
+		clientNames := ""
+		for name := range clients {
+			clientNames += "\n" + name
+		}
+		return fmt.Errorf("Client name `%s` was not found\nPossible values:\n%s", clientName, clientNames)
+	}
+
+	fmt.Printf("%+v\n", client)
+
+	return nil
+}
+
 func main() {
 	var err error
 	if len(os.Args) == 1 {
@@ -280,9 +313,11 @@ func main() {
 		if "token" == modeParam {
 			err = connectClient(os.Args[2:])
 		} else if "new" == modeParam {
-			newClient(os.Args[2:])
+			err = newClient(os.Args[2:])
 		} else if "delete" == modeParam {
-			deleteClient(os.Args[2:])
+			err = deleteClient(os.Args[2:])
+		} else if "print" == modeParam {
+			err = printClient(os.Args[2:])
 		} else {
 			err = connectClient(os.Args[1:])
 			if err != nil {
