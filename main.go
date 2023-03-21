@@ -9,6 +9,8 @@ import (
 
 	"encoding/json"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 	"github.com/manifoldco/promptui"
 )
@@ -298,7 +300,12 @@ func printClient(args []string) error {
 		return fmt.Errorf("Client name `%s` was not found\nPossible values:\n%s", clientName, clientNames)
 	}
 
-	fmt.Printf("%+v\n", client)
+	bytes, err := yaml.Marshal(client)
+	if err == nil {
+		fmt.Print(string(bytes))
+	} else {
+		fmt.Printf("%+v\n", client)
+	}
 
 	return nil
 }
@@ -318,6 +325,12 @@ func main() {
 			err = deleteClient(os.Args[2:])
 		} else if "print" == modeParam {
 			err = printClient(os.Args[2:])
+		} else if "config" == modeParam {
+			var path string
+			path, err = ConfigPath()
+			if err == nil {
+				fmt.Println(path)
+			}
 		} else {
 			err = connectClient(os.Args[1:])
 			if err != nil {

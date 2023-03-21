@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	"path/filepath"
+
 	"gopkg.in/yaml.v3"
 
 	"github.com/99designs/keyring"
@@ -18,8 +20,6 @@ var (
 	urlMatcher  *regexp.Regexp
 	ring        keyring.Keyring
 )
-
-var configPath = os.Getenv("HOME") + "/.config/msaler/"
 
 type Tenant struct {
 	Id   string `json:"id" yaml:"id"`
@@ -95,9 +95,23 @@ func (client Client) Export(marshaler cache.Marshaler, key string) {
 	}
 }
 
+func ConfigPath() (string, error) {
+	configPath, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(configPath, "msaler", "msaler.yaml"), nil
+}
+
 func LoadClients() (map[string]Client, error) {
 	clients := make(map[string]Client)
-	bytes, err := os.ReadFile(configPath + "msaler.yaml")
+	configPath, err := ConfigPath()
+	if err != nil {
+		return clients, err
+	}
+
+	bytes, err := os.ReadFile(configPath)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			return clients, err
@@ -136,16 +150,22 @@ func LoadClients() (map[string]Client, error) {
 }
 
 func SaveClients(clients map[string]Client) error {
+	configPath, err := ConfigPath()
+	if err != nil {
+		return err
+	}
+
 	bytes, err := yaml.Marshal(clients)
 	if err != nil {
 		return err
 	}
 
-	if _, err = os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
-		if err = os.Mkdir(configPath, 0755); err != nil {
+	configDir := filepath.Dir(configPath)
+	if _, err = os.Stat(configDir); errors.Is(err, os.ErrNotExist) {
+		if err = os.Mkdir(configDir, 0755); err != nil {
 			return err
 		}
 	}
 
-	return os.WriteFile(configPath+"/msaler.yaml", bytes, 0644)
+	return os.WriteFile(configPath, bytes, 0644)
 }
