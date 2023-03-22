@@ -41,6 +41,8 @@ jobs:
 
   release:
     name: Release
+    permissions:
+      contents: write
     needs:
       - build
     runs-on: ubuntu-latest
