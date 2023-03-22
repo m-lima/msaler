@@ -22,3 +22,6 @@ Options:
   client                The client to use. If ommited, a selection menu will be presented
   -v                    Print extra token fields to stderr
 ```
+
+# Binaries
+Binaries are available in the [Releases](https://github.com/m-lima/msaler/releases/latest) page
