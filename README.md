@@ -1,5 +1,6 @@
 # Msaler
 [![Github](https://github.com/m-lima/msaler/workflows/Build/badge.svg)](https://github.com/m-lima/msaler/actions?workflow=Build)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A command-line manager for MSAL clients
 
