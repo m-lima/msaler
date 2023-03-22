@@ -1,0 +1,75 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macOS-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Prepare Go
+        uses: actions/setup-go@v4
+
+      - name: Build
+        run: go build
+
+      - name: Upload asset (UNIX)
+        if: matrix.os != 'windows-latest'
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}
+          path: ${{ github.workspace }}/msaler
+
+      - name: Upload asset (WINDOWS)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}
+          path: ${{ github.workspace }}/msaler.exe
+
+  release:
+    name: Release
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+
+    - name: Prepare contents
+      run: |
+        last_tag="$(git describe --tags --abbrev=0 HEAD~1 2> /dev/null || true)"
+        [ "${last_tag}" ] && last_tag="${last_tag}.." || true
+        echo '**Changes since the last release**' > RELEASE_CHANGES
+        git log --format='- %h %s' "${last_tag}${{ github.ref }}" >> RELEASE_CHANGES
+        mv ubuntu-latest/msaler msaler-ubuntu
+        mv macOS-latest/msaler msaler-macOS
+        mv windows-latest/msaler.exe msaler-windows.exe
+
+    - name: Publish
+      uses: softprops/action-gh-release@v1
+      with:
+        draft: false
+        prerelease: false
+        body_path: RELEASE_CHANGES
+        files: |
+            msaler-ubuntu
+            msaler-macOS
+            msaler-windows.exe

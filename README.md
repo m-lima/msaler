@@ -1,4 +1,6 @@
 # Msaler
+[![Github](https://github.com/m-lima/msaler/workflows/Build/badge.svg)](https://github.com/m-lima/msaler/actions?workflow=Build)
+
 A command-line manager for MSAL clients
 
 # Usage
