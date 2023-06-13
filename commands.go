@@ -9,10 +9,12 @@ import (
 
 	"encoding/json"
 
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
+
 	"gopkg.in/yaml.v3"
 
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
-	"github.com/manifoldco/promptui"
 )
 
 var ctx = context.Background()
@@ -38,7 +40,7 @@ func GetClientToken(args []string) error {
 
 	var clientName string
 	if len(args) == 0 {
-		if clientName, err = promptSelectClient(clients); err != nil {
+		if clientName, err = PromptSelectClient(clients); err != nil {
 			return err
 		}
 	} else {
@@ -60,7 +62,7 @@ func GetClientToken(args []string) error {
 	}
 
 	if verbose {
-		asJson, err := json.MarshalIndent(auth, "", "  ")
+		asJson, err := json.MarshalIndent(auth.token, "", "  ")
 		if err == nil {
 			fmt.Fprintf(os.Stderr, "%s\n", asJson)
 		} else {
@@ -68,9 +70,14 @@ func GetClientToken(args []string) error {
 		}
 	}
 
-	fmt.Print(auth.AccessToken)
+	fmt.Print(auth.accessToken)
 
 	return nil
+}
+
+type AuthToken struct {
+	token       any
+	accessToken string
 }
 
 func NewClient(args []string) error {
@@ -101,62 +108,53 @@ func NewClient(args []string) error {
 		return nil
 	}
 
-	prompt := promptui.Prompt{
-		Label:    "Name",
-		Validate: nameValidator,
-		Stdout:   os.Stderr,
-	}
-	name, err := prompt.Run()
+	name, err := PromptInput("Name", nameValidator, false)
 	if err != nil {
 		return err
 	}
 
-	prompt = promptui.Prompt{
-		Label:    "Client ID",
-		Validate: uuidValidator,
-		Stdout:   os.Stderr,
+	client, err := PromptInput("Client ID", uuidValidator, false)
+	if err != nil {
+		return err
 	}
-	client, err := prompt.Run()
+	client = strings.ToLower(client)
+
+	tenantId, err := PromptInput("Tenant ID", uuidValidator, false)
 	if err != nil {
 		return err
 	}
 
-	prompt = promptui.Prompt{
-		Label:  "Project",
-		Stdout: os.Stderr,
-	}
-	project, err := prompt.Run()
+	tenantName, err := PromptInput("Tenant Name", nil, false)
 	if err != nil {
 		return err
 	}
 
-	prompt = promptui.Prompt{
-		Label:    "Tenant ID",
-		Validate: uuidValidator,
-		Stdout:   os.Stderr,
-	}
-	tenantId, err := prompt.Run()
+	project, err := PromptInput("Project", nil, false)
 	if err != nil {
 		return err
 	}
 
-	prompt = promptui.Prompt{
-		Label:  "Tenant Name",
-		Stdout: os.Stderr,
-	}
-	tenantName, err := prompt.Run()
+	baseUrl, err := PromptInput("Base URL", urlValidator, false)
 	if err != nil {
 		return err
 	}
 
-	prompt = promptui.Prompt{
-		Label:    "Base URL",
-		Validate: urlValidator,
-		Stdout:   os.Stderr,
-	}
-	baseUrl, err := prompt.Run()
+	withSecret, err := PromptYesNo("Use Client Secret")
 	if err != nil {
 		return err
+	}
+
+	if withSecret {
+		ring, err := OpenKeyring(client)
+		if err == nil {
+			secret, err := PromptInput("Client Secret", nil, true)
+			if err == nil {
+				err = ring.Save(secret)
+			}
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		}
 	}
 
 	clients[name] =
@@ -167,7 +165,8 @@ func NewClient(args []string) error {
 				Id:   strings.ToLower(tenantId),
 				Name: tenantName,
 			},
-			BaseUrl: baseUrl,
+			BaseUrl:    baseUrl,
+			WithSecret: withSecret,
 		}
 
 	return SaveClients(clients)
@@ -185,7 +184,7 @@ func DeleteClient(args []string) error {
 
 	var clientName string
 	if len(args) == 0 {
-		if clientName, err = promptSelectClient(clients); err != nil {
+		if clientName, err = PromptSelectClient(clients); err != nil {
 			return err
 		}
 	} else {
@@ -218,7 +217,7 @@ func UncacheClient(args []string) error {
 
 	var clientName string
 	if len(args) == 0 {
-		if clientName, err = promptSelectClient(clients); err != nil {
+		if clientName, err = PromptSelectClient(clients); err != nil {
 			return err
 		}
 	} else {
@@ -232,6 +231,17 @@ func UncacheClient(args []string) error {
 			clientNames += "\n" + name
 		}
 		return fmt.Errorf("Client name `%s` was not found\nPossible values:\n%s", clientName, clientNames)
+	}
+
+	if client.WithSecret {
+		ring, err := OpenKeyring(client.Id)
+		if err == nil {
+			err = ring.Remove()
+		}
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		}
 	}
 
 	msalClient, err := public.New(client.Id, public.WithAuthority("https://login.microsoftonline.com/"+client.Tenant.Id), public.WithCache(client))
@@ -260,7 +270,7 @@ func PrintClient(args []string) error {
 
 	var clientName string
 	if len(args) == 0 {
-		if clientName, err = promptSelectClient(clients); err != nil {
+		if clientName, err = PromptSelectClient(clients); err != nil {
 			return err
 		}
 	} else {
@@ -286,7 +296,33 @@ func PrintClient(args []string) error {
 	return nil
 }
 
-func getToken(client Client) (public.AuthResult, error) {
+func getToken(client Client) (AuthToken, error) {
+	if client.WithSecret {
+		token, err := getTokenOauth(client)
+		if err != nil {
+			return AuthToken{}, err
+		} else {
+			return AuthToken{
+					token:       token,
+					accessToken: token.AccessToken,
+				},
+				nil
+		}
+	} else {
+		token, err := getTokenInteractive(client)
+		if err != nil {
+			return AuthToken{}, err
+		} else {
+			return AuthToken{
+					token:       token,
+					accessToken: token.AccessToken,
+				},
+				nil
+		}
+	}
+}
+
+func getTokenInteractive(client Client) (public.AuthResult, error) {
 	msalClient, err := public.New(client.Id, public.WithAuthority("https://login.microsoftonline.com/"+client.Tenant.Id), public.WithCache(client))
 	if err != nil {
 		return public.AuthResult{}, err
@@ -306,54 +342,37 @@ func getToken(client Client) (public.AuthResult, error) {
 	}
 }
 
-func promptSelectClient(clients map[string]Client) (string, error) {
-	type Item struct {
-		Name    string
-		Project string
-		BaseUrl string
-		Tenant  string
+func getTokenOauth(client Client) (*oauth2.Token, error) {
+	ring, err := OpenKeyring(client.Id)
+	if err != nil {
+		return nil, err
 	}
 
-	if len(clients) == 0 {
-		return "", errors.New("No configured clients")
-	}
-
-	i := 0
-	list := make([]Item, len(clients))
-	for name, client := range clients {
-		project := client.Project
-		if len(project) > 0 {
-			project = project + " "
+	secret, err := ring.Load()
+	if err != nil || secret == "" {
+		secret, err = PromptInput("Client Secret", nil, true)
+		if err != nil {
+			return nil, err
 		}
-		tenant := client.Tenant.Name
-		if len(tenant) > 0 {
-			tenant = " " + tenant
+
+		if err := ring.Save(secret); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		}
-		list[i] = Item{
-			Name:    name,
-			Project: project,
-			BaseUrl: client.BaseUrl,
-			Tenant:  tenant,
-		}
-		i++
 	}
 
-	templates := &promptui.SelectTemplates{
-		Label:    `{{ "Client:" | blue }}`,
-		Active:   "▸ {{ .Name | bold }}",
-		Inactive: "  {{ .Name }}",
-		Selected: "Client: {{ .Name | green }}",
-		Details:  "{{ .Name | white }} {{ .Project | cyan }}{{ .BaseUrl }}{{ .Tenant | faint }}",
+	scopes := []string{client.BaseUrl + ".default"}
+
+	config := clientcredentials.Config{
+		ClientID:     client.Id,
+		Scopes:       scopes,
+		ClientSecret: secret,
+		TokenURL:     "https://login.microsoftonline.com/" + client.Tenant.Id + "/oauth2/v2.0/token",
 	}
 
-	prompt := promptui.Select{
-		Items:     list,
-		IsVimMode: true,
-		HideHelp:  true,
-		Templates: templates,
-		Stdout:    os.Stderr,
+	token, err := config.Token(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	i, _, err := prompt.Run()
-	return list[i].Name, err
+	return token, nil
 }

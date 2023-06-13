@@ -28,10 +28,11 @@ type Tenant struct {
 }
 
 type Client struct {
-	Id      string `json:"id" yaml:"id"`
-	Project string `json:"project,omitempty" yaml:"project,omitempty"`
-	Tenant  Tenant `json:"tenant" yaml:"tenant"`
-	BaseUrl string `json:"baseUrl" yaml:"baseUrl"`
+	Id         string `json:"id" yaml:"id"`
+	Project    string `json:"project,omitempty" yaml:"project,omitempty"`
+	Tenant     Tenant `json:"tenant" yaml:"tenant"`
+	BaseUrl    string `json:"baseUrl" yaml:"baseUrl"`
+	WithSecret bool   `json:"withSecret" yaml:"withSecret"`
 }
 
 func getUuidMatcher() *regexp.Regexp {
