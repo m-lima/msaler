@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -55,11 +56,10 @@ func getKeyring() (keyring.Keyring, error) {
 	return ring, err
 }
 
-func (client Client) Replace(unmarshaler cache.Unmarshaler, key string) {
+func (client Client) Replace(ctx context.Context, unmarshaler cache.Unmarshaler, hints cache.ReplaceHints) error {
 	ring, err := getKeyring()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open keyring: %v\n", err)
-		return
 	}
 
 	value, err := ring.Get(client.Tenant.Id + client.Id)
@@ -72,19 +72,21 @@ func (client Client) Replace(unmarshaler cache.Unmarshaler, key string) {
 			fmt.Fprintf(os.Stderr, "Failed to unmarshal cache: %v\n", err)
 		}
 	}
+
+	return nil
 }
 
-func (client Client) Export(marshaler cache.Marshaler, key string) {
+func (client Client) Export(ctx context.Context, marshaler cache.Marshaler, hints cache.ExportHints) error {
 	bytes, err := marshaler.Marshal()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to marshal cache: %v\n", err)
-		return
+		return err
 	}
 
 	ring, err := getKeyring()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open keyring: %v\n", err)
-		return
+		return err
 	}
 
 	if err := ring.Set(keyring.Item{
@@ -92,7 +94,10 @@ func (client Client) Export(marshaler cache.Marshaler, key string) {
 		Data: bytes,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to write keyring: %v\n", err)
+		return err
 	}
+
+	return nil
 }
 
 func ConfigPath() (string, error) {

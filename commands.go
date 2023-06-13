@@ -15,6 +15,8 @@ import (
 	"github.com/manifoldco/promptui"
 )
 
+var ctx = context.Background()
+
 func GetClientToken(args []string) error {
 	verbose := false
 	for i, arg := range args {
@@ -204,6 +206,48 @@ func DeleteClient(args []string) error {
 	return nil
 }
 
+func UncacheClient(args []string) error {
+	if len(args) > 1 {
+		return errors.New("Too many arguments")
+	}
+
+	clients, err := LoadClients()
+	if err != nil {
+		return err
+	}
+
+	var clientName string
+	if len(args) == 0 {
+		if clientName, err = promptSelectClient(clients); err != nil {
+			return err
+		}
+	} else {
+		clientName = args[0]
+	}
+
+	client, ok := clients[clientName]
+	if !ok {
+		clientNames := ""
+		for name := range clients {
+			clientNames += "\n" + name
+		}
+		return fmt.Errorf("Client name `%s` was not found\nPossible values:\n%s", clientName, clientNames)
+	}
+
+	msalClient, err := public.New(client.Id, public.WithAuthority("https://login.microsoftonline.com/"+client.Tenant.Id), public.WithCache(client))
+
+	accounts, err := msalClient.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+
+	if len(accounts) > 0 {
+		msalClient.RemoveAccount(ctx, accounts[0])
+	}
+
+	return nil
+}
+
 func PrintClient(args []string) error {
 	if len(args) > 1 {
 		return errors.New("Too many arguments")
@@ -250,11 +294,15 @@ func getToken(client Client) (public.AuthResult, error) {
 
 	scopes := []string{client.BaseUrl + ".default"}
 
-	accounts := msalClient.Accounts()
+	accounts, err := msalClient.Accounts(ctx)
+	if err != nil {
+		return public.AuthResult{}, err
+	}
+
 	if len(accounts) > 0 {
-		return msalClient.AcquireTokenSilent(context.Background(), scopes, public.WithSilentAccount(accounts[0]))
+		return msalClient.AcquireTokenSilent(ctx, scopes, public.WithSilentAccount(accounts[0]))
 	} else {
-		return msalClient.AcquireTokenInteractive(context.Background(), scopes)
+		return msalClient.AcquireTokenInteractive(ctx, scopes)
 	}
 }
 

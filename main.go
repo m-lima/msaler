@@ -14,10 +14,11 @@ func printUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "A command-line manager for MSAL clients")
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, "Commands:")
-	fmt.Fprintln(writer, "  token  [client] [-v]  Generate an oauth token for a client")
+	fmt.Fprintln(writer, "  token   [client] [-v] Generate an oauth token for a client")
 	fmt.Fprintln(writer, "  new                   Register a new client")
-	fmt.Fprintln(writer, "  delete [client]       Delete a registered client")
-	fmt.Fprintln(writer, "  print  [client]       Print the client information")
+	fmt.Fprintln(writer, "  delete  [client]      Delete a registered client")
+	fmt.Fprintln(writer, "  print   [client]      Print the client information")
+	fmt.Fprintln(writer, "  uncache [client]      Print the client information")
 	fmt.Fprintln(writer, "  config                Print the path to the configuration file containing the registered clients")
 	fmt.Fprintln(writer, "  help                  Print this help message")
 	fmt.Fprintln(writer)
@@ -41,6 +42,8 @@ func main() {
 			err = NewClient(os.Args[2:])
 		} else if "delete" == modeParam {
 			err = DeleteClient(os.Args[2:])
+		} else if "uncache" == modeParam {
+			err = UncacheClient(os.Args[2:])
 		} else if "print" == modeParam {
 			err = PrintClient(os.Args[2:])
 		} else if "config" == modeParam {
