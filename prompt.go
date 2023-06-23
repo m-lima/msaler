@@ -52,6 +52,10 @@ func PromptSelectClient(clients map[string]Client) (string, error) {
 	list := make([]Item, len(clients))
 	for name, client := range clients {
 		project := client.Project
+		baseUrl := client.BaseUrl
+		if len(baseUrl) > 0 {
+			baseUrl = " " + baseUrl
+		}
 		tenant := client.Tenant.Name
 		if len(tenant) > 0 {
 			tenant = " " + tenant
@@ -63,7 +67,7 @@ func PromptSelectClient(clients map[string]Client) (string, error) {
 		list[i] = Item{
 			Name:        name,
 			Project:     project,
-			BaseUrl:     client.BaseUrl,
+			BaseUrl:     baseUrl,
 			Tenant:      tenant,
 			Interactive: interactive,
 		}
