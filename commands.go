@@ -336,7 +336,11 @@ func getTokenInteractive(client Client) (public.AuthResult, error) {
 	}
 
 	if len(accounts) > 0 {
-		return msalClient.AcquireTokenSilent(ctx, scopes, public.WithSilentAccount(accounts[0]))
+		auth, err := msalClient.AcquireTokenSilent(ctx, scopes, public.WithSilentAccount(accounts[0]))
+		if err != nil {
+			return msalClient.AcquireTokenInteractive(ctx, scopes)
+		}
+		return auth, nil
 	} else {
 		return msalClient.AcquireTokenInteractive(ctx, scopes)
 	}
